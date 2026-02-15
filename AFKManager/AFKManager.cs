@@ -11,6 +11,7 @@ namespace AFKManager;
 
 public class AFKManagerConfig : BasePluginConfig
 {
+    public int EnableMinPlayer { get; set; } = 2;
     public int AfkPunishAfterWarnings { get; set; } = 3;
     public int AfkPunishment { get; set; } = 1;
     public float AfkWarnInterval { get; set; } = 5.0f;
@@ -44,6 +45,7 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
     
     public required AFKManagerConfig Config { get; set; }
     private CCSGameRules? _gGameRulesProxy;
+    private bool _minPlayersMessageSent;
     
     public void OnConfigParsed(AFKManagerConfig config)
     {
@@ -59,6 +61,12 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
         {                 
             Config.Timer = 5.0f;
             Console.WriteLine($"{ModuleName}: Timer value is invalid, setting to default value (5.0).");
+        }
+
+        if (Config.EnableMinPlayer < 1)
+        {
+            Config.EnableMinPlayer = 2;
+            Console.WriteLine($"{ModuleName}: EnableMinPlayer value is invalid, setting to default value (2).");
         }
 
         if (Config.SpecWarnInterval < Config.Timer)
@@ -248,6 +256,33 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
 
         var players = Utilities.GetPlayers().Where(x => x is { IsBot: false, Connected: PlayerConnectedState.PlayerConnected }).ToList();
         var playersCount = players.Count;
+
+        if (playersCount < Config.EnableMinPlayer)
+        {
+            if (!_minPlayersMessageSent)
+            {
+                Server.PrintToChatAll(Localizer["ChatPrefix"] + Localizer["ChatMinPlayersToEnable"].Value
+                    .Replace("{minPlayers}", Config.EnableMinPlayer.ToString()));
+                _minPlayersMessageSent = true;
+            }
+
+            foreach (var player in players)
+            {
+                if (!_gPlayerInfo.TryGetValue(player.Index, out var data))
+                    continue;
+
+                data.AfkTime = 0;
+                data.AfkWarningCount = 0;
+                data.AntiCampTime = 0;
+                data.AntiCampWarningCount = 0;
+                data.SpecAfkTime = 0;
+                data.SpecWarningCount = 0;
+            }
+
+            return;
+        }
+
+        _minPlayersMessageSent = false;
         
         foreach (var player in players)
         {
