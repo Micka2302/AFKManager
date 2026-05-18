@@ -17,6 +17,9 @@ Config File located in **/addons/counterstrikesharp/configs/plugins/AFKManager**
   - SpecKickOnlyMovedByPlugin: Only check players in spectator mode who were moved by AFK Manager.
   - SpecSkipFlag: Skip players in spectator mode with this flag during AFK verification.
   - AfkSkipFlag: Skip players with this flag during AFK verification.
+  - AfkMoveToSpec: Enable moving AFK players matching AfkMoveToSpecFlag to spectator (0 = disabled, 1 = enabled).
+  - AfkMoveToSpecFlag: Move AFK players with this flag to spectator instead of fully skipping them (default flag example: @abs/antiafk).
+  - AfkMoveToSpecAfterSeconds: Move players matching AfkMoveToSpecFlag to spectator after X AFK seconds (0 = disabled).
   - AntiCampSkipFlag: Skip players with this flag during AntiCamp verification.
   - PlaySoundName: Play a sound after a warning is issued (leave empty to disable).
   - SkipWarmup: Skip checks during warmup.

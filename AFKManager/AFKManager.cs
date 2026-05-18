@@ -23,6 +23,9 @@ public class AFKManagerConfig : BasePluginConfig
     public bool SpecKickOnlyMovedByPlugin { get; set; } = false;
     public List<string> SpecSkipFlag { get; set; } = [..new[] { "@css/root", "@css/ban" }];
     public List<string> AfkSkipFlag { get; set; } = [..new[] { "@css/root", "@css/ban" }];
+    public int AfkMoveToSpec { get; set; } = 0;
+    public List<string> AfkMoveToSpecFlag { get; set; } = [..new[] { "@abs/antiafk" }];
+    public float AfkMoveToSpecAfterSeconds { get; set; } = 0.0f;
     public List<string> AntiCampSkipFlag { get; set; } = [..new[] { "@css/root", "@css/ban" }];
     public string PlaySoundName { get; set; } = "ui/panorama/popup_reveal_01";
     public bool SkipWarmup { get; set; } = false;
@@ -73,6 +76,24 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
         {
             Config.SpecWarnInterval = Config.Timer;
             Console.WriteLine($"{ModuleName}: The value of SpecWarnInterval is less than the value of Timer, SpecWarnInterval will be forced to {Config.Timer}");
+        }
+
+        if (Config.AfkMoveToSpec is < 0 or > 1)
+        {
+            Config.AfkMoveToSpec = 0;
+            Console.WriteLine($"{ModuleName}: AfkMoveToSpec value is invalid, setting to default value (0).");
+        }
+
+        if (Config.AfkMoveToSpecAfterSeconds < 0.0f)
+        {
+            Config.AfkMoveToSpecAfterSeconds = 0.0f;
+            Console.WriteLine($"{ModuleName}: AfkMoveToSpecAfterSeconds value is invalid, setting to default value (0.0).");
+        }
+
+        if (Config.AfkMoveToSpec == 1 && Config.AfkMoveToSpecAfterSeconds > 0.0f && Config.AfkMoveToSpecAfterSeconds < Config.Timer)
+        {
+            Config.AfkMoveToSpecAfterSeconds = Config.Timer;
+            Console.WriteLine($"{ModuleName}: The value of AfkMoveToSpecAfterSeconds is less than the value of Timer, AfkMoveToSpecAfterSeconds will be forced to {Config.Timer}");
         }
         
         if(Config.AntiCampWarnInterval < Config.Timer)
@@ -300,14 +321,31 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
                 
                 var angles = playerPawn?.EyeAngles;
                 var origin = player.PlayerPawn.Value?.CBodyComponent?.SceneNode?.AbsOrigin;
+                var hasAfkMoveToSpecFlag = Config.AfkMoveToSpec == 1
+                                           && Config.AfkMoveToSpecAfterSeconds > 0.0f
+                                           && PlayerHasConfiguredFlag(player, Config.AfkMoveToSpecFlag);
+                var hasAfkSkipFlag = PlayerHasConfiguredFlag(player, Config.AfkSkipFlag);
                 
                 /*  ------------------------------------------->  <-------------------------------------------  */
-                if (Config.AfkPunishAfterWarnings != 0
-                    && !(Config.AfkSkipFlag.Count >= 1 && AdminManager.PlayerHasPermissions(player, Config.AfkSkipFlag.ToArray()))
+                if ((Config.AfkPunishAfterWarnings != 0 || hasAfkMoveToSpecFlag)
+                    && (!hasAfkSkipFlag || hasAfkMoveToSpecFlag)
                     && data.Angles.X == angles.X && data.Angles.Y == angles.Y
                     && data.Origin.X == origin.X && data.Origin.Y == origin.Y)
                 {
                     data.AfkTime += Config.Timer;
+
+                    if (hasAfkMoveToSpecFlag)
+                    {
+                        if (data.AfkTime < Config.AfkMoveToSpecAfterSeconds)
+                            continue;
+
+                        MovePlayerToSpectator(player, playerPawn, data);
+
+                        data.AfkWarningCount = 0;
+                        data.AfkTime = 0;
+
+                        continue;
+                    }
                     
                     if (data.AfkTime < Config.AfkWarnInterval)
                         continue;
@@ -349,10 +387,7 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
                                 
                                 break;
                             case 1:
-                                Server.PrintToChatAll(ReplaceVars(player, Localizer["ChatMoveMessage"].Value));
-                                playerPawn?.CommitSuicide(false, true);
-                                player.ChangeTeam(CsTeam.Spectator);
-                                data.MovedByPlugin = true;
+                                MovePlayerToSpectator(player, playerPawn, data);
                                 
                                 break;
                             case 2:
@@ -465,7 +500,7 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
                 && player.TeamNum == 1
                 && playersCount >= Config.SpecKickMinPlayers)
             {
-                if((Config.SpecKickOnlyMovedByPlugin && !data.MovedByPlugin) || (Config.SpecSkipFlag.Count >= 1 && AdminManager.PlayerHasPermissions(player, Config.SpecSkipFlag.ToArray())))
+                if((Config.SpecKickOnlyMovedByPlugin && !data.MovedByPlugin) || PlayerHasConfiguredFlag(player, Config.SpecSkipFlag))
                     continue;
                 
                 data.SpecAfkTime += Config.Timer;
@@ -520,6 +555,19 @@ public class AFKManager : BasePlugin, IPluginConfig<AFKManagerConfig>
                       .Replace("{timeAmount}", $"{timeAmount:F1}")
                       .Replace("{slapAmount}", Config.AntiCampSlapDamage.ToString())
                       .Replace("{zoneName}", player.PlayerPawn?.Value?.LastPlaceName ?? "Unknown");
+    }
+
+    private static bool PlayerHasConfiguredFlag(CCSPlayerController player, List<string> flags)
+    {
+        return flags.Count >= 1 && AdminManager.PlayerHasPermissions(player, flags.ToArray());
+    }
+
+    private void MovePlayerToSpectator(CCSPlayerController player, CBasePlayerPawn? playerPawn, PlayerInfo data)
+    {
+        Server.PrintToChatAll(ReplaceVars(player, Localizer["ChatMoveMessage"].Value));
+        playerPawn?.CommitSuicide(false, true);
+        player.ChangeTeam(CsTeam.Spectator);
+        data.MovedByPlugin = true;
     }
 
     private static void RemoveC4(CCSPlayer_WeaponServices services ,CBasePlayerWeapon weapon)
